@@ -1,4 +1,4 @@
-# Project Lifecycle Playbook v1.5
+# Project Lifecycle Playbook v1.6
 ## A universal, stack-agnostic framework for turning a clear idea into complete, working code
 
 **Purpose:** A repeatable, disciplined process for *any* new project, in any language, on any stack. It forces clarity upfront, proves risky assumptions early, and generates a complete chain — Requirements → Architecture → Build Prompts — with zero "figure it out during code" moments.
@@ -9,6 +9,8 @@
 - It **is** stack-agnostic. Nothing here assumes a particular language, framework, database, or deployment target. Where a concrete example is given (a specific framework, a code snippet), it is clearly marked as an *example* and is not part of the method.
 - It **is not** a guarantee of flawless code. No document can prevent a wrong domain decision or an execution slip. What it *does* eliminate is the class of *systematic* failures: missing layers, unwired dependencies, ambiguous specs, dropped requirements, unverified assumptions, and unhandled entry points. Those are removed by design and caught by gates; correctness of business logic is still proven by tests and review, not by this file.
 
+> **v1.6 changes.** Two additions to §5: **fallback-on-failure, never fake-on-failure** — when a real operation fails at runtime (an API call, content extraction, a computation), the code returns a genuine fallback or the standard error envelope, never placeholder/fake/sample content presented as success; and **integration tests for the core happy path** are mandatory — "tests pass" is not satisfied by unit tests alone, the primary end-to-end flow must have a passing integration test. (The "every frontend call has a backend endpoint" rule was already enforced as the §5.3/§5.4 caller→handler check.)
+>
 > **v1.5 changes.** Added the **placeholder policy** (§5.3): code carries **no** placeholders/`TODO`s/stubs — anything the spec allows is implemented; the only values left unfilled are human-supplied configuration values, which go in config files as explicit, greppable placeholders and are catalogued in a **Human-Input Register** (file, key, purpose, why human-only, where to obtain). Enforced in §5.4. Nothing is silently missing.
 >
 > **v1.4 changes.** Consolidated into a single A-to-Z document. The full end-to-end verification routine lives entirely in §5.3 (Completeness Protocol) and §5.4 (Self-Verification Gate) — there is no separate protocol file. Added the explicit rule that any failed gate check is a blocker.
@@ -209,6 +211,7 @@ Example gates (illustrative): skeleton up and health/readiness probe green → a
 - **Implement, don't placeholder** — leave no `[placeholder]`, `TODO`, or stub in code; the only legitimate gaps are human-supplied configuration values, which go in config as explicit placeholders and into the Human-Input Register (see §5.3 placeholder policy).
 - **Minimal changes** — do not refactor code unrelated to the task.
 - **Pass the Self-Verification Gate** (§5.4) before declaring any phase done.
+- **Integration-test the happy path** — include at least one integration test exercising the feature's primary end-to-end flow, not unit tests alone.
 - **Carry the spec, the Completeness Map, and the Traceability Matrix** in every session's context.
 
 ### 5.3 The Completeness Protocol (the backbone of every build prompt)
@@ -247,6 +250,7 @@ This is the core defense against "missing functionality" and "broken wiring." It
 - NEVER assume an implementation exists — search for it first.
 - NEVER assume a generic or base data-access layer covers an entity unless a working generic implementation is verified registered for that entity.
 - NEVER leave a presented or consumed value bound to a placeholder/default when a real source is available.
+- NEVER substitute placeholder, fake, or sample content when a real operation fails at runtime (an API call, content extraction, a computation) — implement a genuine fallback path, or fail with the standard error envelope. Faking success on failure is a blocker.
 - ALWAYS trace every outbound call a client/UI/agent makes to a concrete handler.
 - ALWAYS run the full test suite after every batch of changes.
 
@@ -261,6 +265,7 @@ A prompt may not declare a phase complete until **all** of the following pass. S
 
 - **Build is clean** — the project's build command reports zero errors (warnings-as-errors where configured).
 - **Tests pass** — the full automated suite is green.
+- **Integration tests cover the core happy path** — the primary end-to-end flow has at least one integration test, and it passes; a green suite of unit tests alone does not satisfy this check.
 - **Caller → handler mapping is complete** — every invocation a client/UI/job/agent makes resolves to exactly one handler whose contract matches (method/route/params, message schema, CLI args, or tool signature), and the **serialization/content encoding the caller sends matches what the handler expects to bind** (a mismatch is a classic source of silent failures and all-null binds).
 - **Dependency graph closes** — every component's constructor parameters are themselves registered, recursively, until the graph closes; no missing registrations, **no cycles**, and **no captive-lifetime mismatch** (a longer-lived component must not depend on a shorter-lived one).
 - **Persistence chain closes** — every entity a service uses has a contract, a registered implementation that fulfills every member (no stubs), a correct lifetime, and is mapped + migrated; no orphan implementations; no reliance on an unverified generic data-access layer.
@@ -272,6 +277,7 @@ A prompt may not declare a phase complete until **all** of the following pass. S
 - **No invented APIs** — every external library/framework/API symbol referenced actually exists in the pinned version.
 - **No placeholders in code** — the output is scanned for `[placeholder]`/`TODO`/`FIXME`/stub/not-implemented markers and fake sample values; each is either implemented or, if it is a human-supplied config value, relocated to a config file as an explicit placeholder and recorded in the Human-Input Register. Code carries none.
 - **Config placeholders are explicit and registered** — every value left for the human is marked in the one consistent form and listed in the Human-Input Register with its purpose and how to obtain it; no value the build could itself supply is left blank, and no placeholder is a fabricated real-looking value.
+- **Failure behavior is real, not faked** — when a real operation fails at runtime, the code returns a genuine fallback or the standard error envelope; it never returns placeholder/fake/sample content dressed as success.
 - **Security holds** — authorization enforced on every protected entry point; inputs validated; outputs encoded; errors use the standard envelope.
 - **Nothing exposed is unimplemented; nothing silently swallows errors.**
 
