@@ -1,0 +1,68 @@
+When configuring Azure AD B2C authentication in ASP.NET Core with pure authorization code flow (response_type=code, no implicit/hybrid grant) and the B2C app registration has Implicit grant & hybrid flows → both Access tokens and ID tokens UNCHECKED, you MUST apply these three fixes. B2C behaves differently from standard OpenID Connect in this configuration.
+
+Required Program.cs pattern
+// 1. Register Microsoft Identity Web with pure code + PKCE
+builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApp(options =>
+    {
+        builder.Configuration.GetSection("Rw365AzureAdB2C").Bind(options);
+        options.ResponseType = OpenIdConnectResponseType.Code;
+        options.UsePkce = true;
+        options.SaveTokens = true;
+    });
+
+// 2. Post-configure: custom protocol validator + access_token principal
+builder.Services.PostConfigure<OpenIdConnectOptions>(
+    OpenIdConnectDefaults.AuthenticationScheme, options =>
+{
+    options.ProtocolValidator = new B2CProtocolValidator();
+
+    options.Events.OnTokenValidated = context =>
+    {
+        if (context.SecurityToken is null &&
+            context.ProtocolMessage?.AccessToken is not null)
+        {
+            var handler = new JsonWebTokenHandler();
+            var jwt = handler.ReadJsonWebToken(context.ProtocolMessage.AccessToken);
+            var claims = jwt.Claims
+                .Where(c => c.Type is not ("aud" or "iss" or "iat" or "exp" or "nbf" or "jti"))
+                .Select(c => new Claim(c.Type, c.Value));
+            context.Principal = new ClaimsPrincipal(
+                new ClaimsIdentity(claims, "OpenIdConnect"));
+        }
+        return Task.CompletedTask;
+    };
+});
+Required B2CProtocolValidator class
+sealed class B2CProtocolValidator : OpenIdConnectProtocolValidator
+{
+    public B2CProtocolValidator()
+    {
+        // B2C with form_post may not echo state back.
+        RequireState = false;
+    }
+
+    public override void ValidateTokenResponse(
+        OpenIdConnectProtocolValidationContext ctx)
+    {
+        // B2C token endpoint doesn't return id_token with response_type=code
+        // when implicit grant is fully disabled.
+        // Skip base validation that requires both id_token and access_token.
+    }
+}
+Why each fix is needed
+Error code	Cause	Fix
+IDX21329: State is null	B2C's form_post response mode may not echo the state parameter back to /signin-oidc when implicit grant is fully disabled. The base ValidateAuthenticationResponse → ValidateState requires it.	RequireState = false in validator constructor
+IDX21336: id_token missing from token response	B2C token endpoint only returns access_token when response_type=code is used and implicit grant is disabled. The base ValidateTokenResponse requires both.	Override ValidateTokenResponse with empty body
+No user identity after login	Without id_token, the middleware can't build a ClaimsPrincipal. The access_token JWT contains the same sub, name, email claims.	OnTokenValidated event decodes the access_token JWT and builds the principal
+B2C appsettings.json requirements
+"Rw365AzureAdB2C": {
+    "Instance": "https://{tenant}.b2clogin.com",
+    "ClientId": "{app-id}",
+    "Domain": "{tenant}.onmicrosoft.com",
+    "SignUpSignInPolicyId": "B2C_1_SI",
+    "CallbackPath": "/signin-oidc",
+    "SignedOutCallbackPath": "/signout-callback-oidc",
+    "ResponseType": "code",
+    "UsePkce": true
+}

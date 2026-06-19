@@ -1,0 +1,80 @@
+You are building a full-stack web application. Before writing any code, first produce a
+COMPLETENESS CHECKLIST by tracing every user action from the UI to the database and back.
+Then implement every layer end-to-end.
+
+## Phase 1 — Architecture Audit (no code yet)
+
+For every user-facing feature visible in the UI (Vue components, pages, forms), list:
+
+1. HTTP endpoint the UI calls (verb + path)
+2. Controller + action that handles it (or "MISSING" if none)
+3. Service method(s) required
+4. Repository interface(s) required
+5. DI registration required (repo → impl, service, external dep)
+6. Database tables/entities involved
+
+Produce a table with columns: [Feature, UI Call, Controller, Service, Repository, DI Wired?].
+
+Identify every row where any column is MISSING or NOT WIRED. Those are gaps.
+
+## Phase 2 — Implement Gaps Bottom-Up
+
+Implement in this order, never skipping a layer:
+1. Repository implementations (EF Core or data access)
+2. DI registrations for repositories
+3. Infrastructure service DI (storage, email, LLM, payment gateway)
+4. Application services that depend on steps 2-3
+5. DI registrations for application services
+6. API controllers (thin — delegate to services, return JSON)
+7. Verify every route the frontend calls has a matching controller action
+
+## Phase 3 — Self-Verification
+
+Before declaring done:
+- Run `dotnet build` — zero errors required
+- Run `dotnet test` — all tests must pass
+- For every fetch() call in *.js files, confirm a corresponding C# action exists with matching HTTP verb, route, and parameters
+- Confirm every service constructor dependency is resolvable from DI
+- Confirm Content-Type mismatch cannot happen: if frontend sends FormData, backend uses [FromForm]; if JSON, backend uses [FromBody]
+
+## Hard Rules
+
+- NEVER leave an API endpoint unimplemented that the frontend calls
+- NEVER register a service in DI without also registering all its constructor dependencies
+- NEVER assume a repository implementation exists — grep for it first
+- When a page has a Vue island component, trace every fetch() inside it
+- Run the full test suite after every batch of changes
+
+
+
+
+
+When generating a full-stack ASP.NET Core + Vue application, apply these rules:
+
+1. TRACE EVERY FETCH — For every fetch() call in every .js file, a
+   corresponding C# action MUST exist with the same HTTP verb, route, and
+   parameter shape. No exceptions.
+
+2. REGISTER EVERY CONSTRUCTOR PARAMETER — When you register a service in
+   DI (Program.cs), walk its constructor. Every interface parameter must
+   also be registered. Repeat recursively until the graph closes. Never
+   bypass this.
+
+3. CONTROLLER = PAGE OR API, NOT BOTH — View controllers (returning
+   .cshtml) live alongside API controllers or actions (returning JSON).
+   But an API action CAN live on a view controller via a root-relative
+   route (e.g. [HttpPost("~/api/resume")]). Prefer this over creating a
+   duplicate controller.
+
+4. EVERY ENTITY HAS A REPOSITORY — For every DbSet<T> in the DbContext, a
+   matching I{Entity}Repository interface AND EF Core implementation must
+   exist. Register both in DI.
+
+5. START FROM CONFIG, NOT HARDCODED — No connection strings, API keys, or
+   secrets in code. Read from IConfiguration. Use Managed Identity
+   (DefaultAzureCredential) for Azure services. The appsettings.json
+   sections are the single source of truth for config key names.
+
+6. SELF-VERIFY BEFORE DECLARING DONE — Run dotnet build (zero errors) and
+   dotnet test (all passing). For bonus points, diff every fetch path
+   against every controller route and flag mismatches.

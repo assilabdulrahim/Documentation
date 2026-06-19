@@ -1,0 +1,11 @@
+## ASP.NET Core MVC: Before debugging CSS/JS not loading, check this first
+
+In ASP.NET Core MVC, `~/` paths in `<link href="~/css/site.css">` and `<script src="~/js/...">` require the `UrlResolutionTagHelper` to resolve them to root-relative paths (e.g., `/css/site.css`). Without it, the browser receives `~/css/site.css` as a literal relative URL and 404s.
+
+**Always verify these two files exist before chasing CSS/Styling bugs:**
+
+1. **`Views/_ViewImports.cshtml`** must contain:
+   ```csharp
+   @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+   
+   The second file is _ViewStart.cshtml 
