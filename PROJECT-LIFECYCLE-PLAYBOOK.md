@@ -1,4 +1,4 @@
-# Project Lifecycle Playbook v1.4
+# Project Lifecycle Playbook v1.5
 ## A universal, stack-agnostic framework for turning a clear idea into complete, working code
 
 **Purpose:** A repeatable, disciplined process for *any* new project, in any language, on any stack. It forces clarity upfront, proves risky assumptions early, and generates a complete chain — Requirements → Architecture → Build Prompts — with zero "figure it out during code" moments.
@@ -9,6 +9,8 @@
 - It **is** stack-agnostic. Nothing here assumes a particular language, framework, database, or deployment target. Where a concrete example is given (a specific framework, a code snippet), it is clearly marked as an *example* and is not part of the method.
 - It **is not** a guarantee of flawless code. No document can prevent a wrong domain decision or an execution slip. What it *does* eliminate is the class of *systematic* failures: missing layers, unwired dependencies, ambiguous specs, dropped requirements, unverified assumptions, and unhandled entry points. Those are removed by design and caught by gates; correctness of business logic is still proven by tests and review, not by this file.
 
+> **v1.5 changes.** Added the **placeholder policy** (§5.3): code carries **no** placeholders/`TODO`s/stubs — anything the spec allows is implemented; the only values left unfilled are human-supplied configuration values, which go in config files as explicit, greppable placeholders and are catalogued in a **Human-Input Register** (file, key, purpose, why human-only, where to obtain). Enforced in §5.4. Nothing is silently missing.
+>
 > **v1.4 changes.** Consolidated into a single A-to-Z document. The full end-to-end verification routine lives entirely in §5.3 (Completeness Protocol) and §5.4 (Self-Verification Gate) — there is no separate protocol file. Added the explicit rule that any failed gate check is a blocker.
 >
 > **v1.3 changes.** Folded in fault classes observed when the generated code was tested: **persistence-chain completeness** (every entity → contract → registered implementation → correct lifetime → fulfils every member → mapped + migrated; no orphan or stub implementations; no unverified reliance on a generic data layer), **data provenance** (presented/consumed values bound to a real source, never a leftover placeholder or default), **exact config-key matching** (a key the code reads must exist verbatim), **full DI-graph closure with lifetime checks** (no captive dependencies, no cycles), and **embedded-template/syntax-collision** checks (the host parser must not consume sequences meant for a template engine). All stated generically; framework names appear only as examples.
@@ -170,6 +172,7 @@ Spikes are proven and requirements are locked. Now Claude designs the system and
 - **Migrations are first-class** — schema changes are versioned and applied; no manual drift.
 - **No invented APIs** — every external library/framework symbol used is verified to exist in the pinned version before relying on it.
 - **Configuration keys match exactly** — the key a component reads is the key the configuration defines, verbatim (no renamed or differently-prefixed keys).
+- **No placeholders in code** — only human-supplied configuration values are left unfilled, and those are explicit, greppable, and recorded in the Human-Input Register.
 
 #### Security standards (design-time checklist; enforced again in §5.4)
 - AuthN + AuthZ on every protected entry point (default-deny).
@@ -203,6 +206,7 @@ Example gates (illustrative): skeleton up and health/readiness probe green → a
 - **Report severity-rated findings** (Critical / High / Medium / Low) and **await approval** on flagged items.
 - **Build bottom-up, never skip a layer** (see §5.3).
 - **Inline the matching trap entries** from the project's Known-Traps Library (Appendix A) — verbatim, code included — for every entry whose trigger matches this stack.
+- **Implement, don't placeholder** — leave no `[placeholder]`, `TODO`, or stub in code; the only legitimate gaps are human-supplied configuration values, which go in config as explicit placeholders and into the Human-Input Register (see §5.3 placeholder policy).
 - **Minimal changes** — do not refactor code unrelated to the task.
 - **Pass the Self-Verification Gate** (§5.4) before declaring any phase done.
 - **Carry the spec, the Completeness Map, and the Traceability Matrix** in every session's context.
@@ -239,11 +243,17 @@ This is the core defense against "missing functionality" and "broken wiring." It
 - NEVER leave an entry point the system exposes unimplemented.
 - NEVER register a component without also registering all of its dependencies.
 - NEVER register a type whose implementation is a stub or not-implemented placeholder.
+- NEVER leave a placeholder, `TODO`, or stub in code where the spec allows implementation — implement it. The only values left unfilled are human-supplied configuration values, placed in config files as explicit placeholders and listed in the Human-Input Register.
 - NEVER assume an implementation exists — search for it first.
 - NEVER assume a generic or base data-access layer covers an entity unless a working generic implementation is verified registered for that entity.
 - NEVER leave a presented or consumed value bound to a placeholder/default when a real source is available.
 - ALWAYS trace every outbound call a client/UI/agent makes to a concrete handler.
 - ALWAYS run the full test suite after every batch of changes.
+
+**Placeholder policy — code carries no placeholders; configuration carries explicit, registered ones.**
+- **In code: implement, never placeholder.** No `[placeholder]`, `TODO`, `FIXME`, empty/stub bodies, not-implemented throws, or fake/sample values standing in for real logic or content. If the spec gives enough to build it, build it now. A placeholder in code is a gap, and a gap is a blocker.
+- **In configuration: placeholders are allowed, but explicit and never invented.** Values only a human can supply after the build — secrets, API keys, connection strings, tenant IDs/URLs, license keys, externally issued identifiers — live in config files as clearly marked placeholders in one consistent, greppable form (e.g. `<SET_ME: purpose>` or an environment-variable reference), never scattered through code. Never fabricate a real-looking value; a plausible-but-wrong key fails more confusingly than an obvious blank.
+- **Everything left unfilled is inventoried.** Maintain a **Human-Input Register**: for each surviving placeholder — the file and key, what it is, why only a human can supply it, and where to obtain it. Nothing is silently missing: if it is not implemented, it is because it provably requires a human, and it appears in the register.
 
 ### 5.4 Self-Verification Gate (runs at every phase gate, before "done")
 
@@ -260,6 +270,8 @@ A prompt may not declare a phase complete until **all** of the following pass. S
 - **Data provenance is correct** — every presented or consumed value comes from its real source, not a placeholder, hardcoded default, or input the caller never sets.
 - **Embedded templates parse** — any generated code that embeds another language or templating (template literals, JSX, Jinja/ERB/Handlebars, format strings, shell heredocs, etc.) is scanned so the **host parser does not consume sequences meant for the template engine** before it runs. (Example: `${...}` inside a backtick template literal is a host-language expression, so a literal `${{ value }}` breaks; a brace in a format string may need doubling.) Escape, relocate, or split as needed.
 - **No invented APIs** — every external library/framework/API symbol referenced actually exists in the pinned version.
+- **No placeholders in code** — the output is scanned for `[placeholder]`/`TODO`/`FIXME`/stub/not-implemented markers and fake sample values; each is either implemented or, if it is a human-supplied config value, relocated to a config file as an explicit placeholder and recorded in the Human-Input Register. Code carries none.
+- **Config placeholders are explicit and registered** — every value left for the human is marked in the one consistent form and listed in the Human-Input Register with its purpose and how to obtain it; no value the build could itself supply is left blank, and no placeholder is a fabricated real-looking value.
 - **Security holds** — authorization enforced on every protected entry point; inputs validated; outputs encoded; errors use the standard envelope.
 - **Nothing exposed is unimplemented; nothing silently swallows errors.**
 
